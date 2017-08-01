@@ -15,7 +15,7 @@ gems
 
 ## Authors
 
-* **Joshua Hamor** - *Initial work* - [PurpleBooth](https://github.com/silicon)
+* **Joshua Hamor** - *Initial work* - [silicon](https://github.com/silicon)
 
 ## License
 
