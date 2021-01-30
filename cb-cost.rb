@@ -6,9 +6,10 @@
 #  Copyright 2017 Hectomertz, Inc. All rights reserved.
 #
 
-require 'coinbase/exchange'
+require 'coinbase/wallet'
 require 'csv'
 require 'optparse'
+require 'yaml'
 
 #
 # OptionParser
@@ -50,35 +51,41 @@ end
 # Classes
 #
 class CB
+  def self.load_secrets()
+    secrets = YAML.load_file("./secrets.yml")["production"]
+  end
   def self.process_csv(file)
     coins    = 0
     currency = nil
     spent    = 0
 
+    puts "DEBUG: looping over CSV file(s)" if CONFIG[:debug]
+    puts "DEBUG: file: #{file}" if CONFIG[:debug]
     CSV.foreach(file) do |row|
-      if CONFIG[:currency].include?(row[3])
-        currency      = row[3]
-        coin_amount   = row[2].to_f
-        dollar_amount = row[7].to_f
-        fee           = row[9].to_f
+      if CONFIG[:currency].include?(row[2])
+        currency      = row[2]
+        coin_amount   = row[3].to_f
+        dollar_amount = row[6].to_f
+        fee           = row[7].to_f
 
-        coins = coins + coin_amount
-        spent = spent + dollar_amount
-        puts "spent: #{spent}" if CONFIG[:debug]
+        case row[1]
+        when "Buy"
+          coins = coins + coin_amount
+          spent = spent + dollar_amount
+        when "Send"
+          coins = coins - coin_amount
+          spent = spent - dollar_amount
+        end
+        puts "DEBUG: --> coins: #{coins} spent: #{spent}" if CONFIG[:debug]
       end
     end
+    puts "DEBUG: --> coins: #{coins} currency: #{currency} spent: #{spent}" if CONFIG[:debug]
     return { :coins => coins, :currency => currency, :spent => spent, }
   end
-  def self.acquire_price(currency)
-    websocket = Coinbase::Exchange::Websocket.new(product_id: "#{currency}-USD",keepalive: true)
-
-    current_rate = 0
-    websocket.match do |msg|
-      current_rate = "%.2f" % msg.price
-      return current_rate
-    end
-
-    EM.run { websocket.start! }
+  def self.acquire_price(currency, api_key, api_secret)
+    client = Coinbase::Wallet::Client.new(api_key: api_key, api_secret: api_secret)
+    price = client.buy_price({currency_pair: "#{currency}-USD"})
+    return price["amount"]
   end
 end
 
@@ -91,8 +98,9 @@ grand_total   = 0
 grand_worth   = 0
 
 CONFIG[:filename].each do |file|
+  secrets = CB.load_secrets()
   data = CB.process_csv(file)
-  current_rate = CB.acquire_price(data[:currency])
+  current_rate = CB.acquire_price(data[:currency], secrets["api_key"], secrets["api_secret"])
 
   total = "%.2f" % (data[:spent].to_f)
   worth = "%.2f" % (data[:coins] * current_rate.to_f)
